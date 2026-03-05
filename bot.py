@@ -153,7 +153,7 @@ def start_bot():
                 elif content.lower().strip() == "/at help":
                     reply("Available commands: DO THIS FIRST: /at register\n/at credits, /at profile [username], /at setbio [bio], /at setfc [friend code], /at setdisplayname [display name]\nuse /au help for the regular bot's commands")
                 elif content.lower().strip() == "/at credits":
-                    reply("Made by: Lmutt090 (<https://lmutt090.me>) and ClaudiWolf (<https://www.claudiwolf2056.com/>)")
+                    reply("Made by: Lmutt090 (<https://lmutt090.me>) and ClaudiWolf (<https://www.claudiwolf2056.com/>)") # Please do not remove the credits from these people, atleast to the people who fork this...
                 elif content.lower().strip().startswith("/at profile "):
                     musername = content[12:].strip()
                     if not musername:
@@ -306,10 +306,14 @@ def start_bot():
                                 reply(f"Error updating display name: {e}")
                         else:
                             reply("You must register first!")
+                # This
                 elif content.lower().strip() == "/at online":
                     reply("/au online")
                 elif content.lower().strip().find("imutt") != -1:
                     reply(f"It's Lmutt, not imutt {username}")
+                elif content.lower().strip().find("lmutt") != -1:
+                    reply("<@1286383453016686705>")
+                # to here, can be removed if you want... idrgaf
                 elif content.lower().strip() == "//au help":
                     reply("Aurith commands now start with /at instead of //au to avoid confusion with the main bot's commands. Use /at help for a list of commands!")
 
