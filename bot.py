@@ -15,8 +15,8 @@ TCP_PORT = 4040
 print("I'm gonna learn spanish now!")
 
 CONFIG = {
-    "username": "Aurith",
-    "password": "DiscordClankerslm40",
+    "username": "Username",
+    "password": "Password",
     "platform": "BOT"
 }
 
@@ -79,7 +79,10 @@ def start_bot():
                         Discordusername TEXT UNIQUE,
                         bio TEXT,
                         friend_code_3ds integer,
-                        messages_sent integer DEFAULT 0
+                        messages_sent integer DEFAULT 0,
+                        badges TEXT DEFAULT '',
+                        can_assign_badges INTEGER DEFAULT 0,
+                        owner INTEGER DEFAULT 0
                     )''')
     conn.commit()
     reply("Aurith is online!")
@@ -309,6 +312,75 @@ def start_bot():
                 # This
                 elif content.lower().strip() == "/at online":
                     reply("/au online")
+                elif content.lower().strip().startswith("/at badge"):
+                    # /at badge add <username> <badge>
+                    # /at badge remove <username> <badge>
+                    # /at badge list [username]
+                    cmd = content.split(None, 2)
+                    sub = cmd[1].lower() if len(cmd) > 1 else ''
+                    rest = cmd[2].strip() if len(cmd) > 2 else ''
+
+                    def get_user_row(name_to_find):
+                        if platform:
+                            return cursor.execute("SELECT * FROM users WHERE AUusername=?", (name_to_find,)).fetchone()
+                        else:
+                            return cursor.execute("SELECT * FROM users WHERE Discordusername=?", (name_to_find,)).fetchone()
+
+                    if sub == 'list':
+                        target = rest or username
+                        user = get_user_row(target)
+                        if not user:
+                            reply("No profile found.")
+                        else:
+                            badges = user[7] or ''
+                            badges_list = [b for b in [x.strip() for x in badges.split(',')] if b]
+                            reply(f"Badges for {target}: {', '.join(badges_list) if badges_list else 'None'}")
+                    elif sub in ('add', 'remove'):
+                        # must have assign permission
+                        caller_row = get_user_row(username)
+                        caller_has_perm = False
+                        if caller_row:
+                            caller_has_perm = bool(caller_row[8]) if len(caller_row) > 8 else False
+                        if not caller_has_perm:
+                            reply("You do not have permission to assign or remove badges.")
+                        else:
+                            parts = rest.split(None, 1)
+                            if len(parts) < 2:
+                                reply("Usage: /at badge add|remove <username> <badge>")
+                            else:
+                                target, badge = parts[0].strip(), parts[1].strip()
+                                user = get_user_row(target)
+                                if not user:
+                                    reply("Target user not found.")
+                                else:
+                                    badges = user[7] or ''
+                                    badges_set = set(b for b in [x.strip() for x in badges.split(',')] if b)
+                                    if sub == 'add':
+                                        if badge in badges_set:
+                                            reply(f"{target} already has the badge '{badge}'.")
+                                        else:
+                                            badges_set.add(badge)
+                                            new_badges = ','.join(sorted(badges_set))
+                                            if platform:
+                                                cursor.execute("UPDATE users SET badges=? WHERE AUusername=?", (new_badges, target))
+                                            else:
+                                                cursor.execute("UPDATE users SET badges=? WHERE Discordusername=?", (new_badges, target))
+                                            conn.commit()
+                                            reply(f"Badge '{badge}' added to {target}.")
+                                    else:
+                                        if badge not in badges_set:
+                                            reply(f"{target} does not have the badge '{badge}'.")
+                                        else:
+                                            badges_set.discard(badge)
+                                            new_badges = ','.join(sorted(badges_set))
+                                            if platform:
+                                                cursor.execute("UPDATE users SET badges=? WHERE AUusername=?", (new_badges, target))
+                                            else:
+                                                cursor.execute("UPDATE users SET badges=? WHERE Discordusername=?", (new_badges, target))
+                                            conn.commit()
+                                            reply(f"Badge '{badge}' removed from {target}.")
+                    else:
+                        reply("Badge commands: /at badge list [username], /at badge add <username> <badge>, /at badge remove <username> <badge>")
                 elif content.lower().strip().find("imutt") != -1:
                     reply(f"It's Lmutt, not imutt {username}")
                 elif content.lower().strip().find("lmutt") != -1:
@@ -431,8 +503,24 @@ def start_bot():
                         Discordusername TEXT UNIQUE,
                         bio TEXT,
                         friend_code_3ds integer,
-                        messages_sent integer DEFAULT 0
+                        messages_sent integer DEFAULT 0,
+                        badges TEXT DEFAULT '',
+                        can_assign_badges INTEGER DEFAULT 0,
+                        owner INTEGER DEFAULT 0
                     )''')
+    # Add columns if they don't exist (for migration)
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN badges TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN can_assign_badges INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN owner INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
     conn.commit()
     reply("Aurith is online!")
     # start console input thread
@@ -503,7 +591,7 @@ def start_bot():
                 if content.lower().strip() == "//au hello":
                     reply("Hello, Im Dr. Sex")
                 elif content.lower().strip() == "//au help":
-                    reply("Available commands: DO THIS FIRST: //au register\n//au credits, //au profile [username], //au setbio [bio], //au setfc [friend code], //au setdisplayname [display name]\nuse /au help for the regular bot's commands")
+                    reply("Available commands: DO THIS FIRST: //au register\n//au credits, //au profile [username], //au setbio [bio], //au setfc [friend code], //au setdisplayname [display name]\n//au badge list [username], //au badge add <username> <badge> (requires permission), //au badge remove <username> <badge> (requires permission), //au badge grant <username> (owner only), //au badge revoke <username> (owner only)\nuse /au help for the regular bot's commands")
                 elif content.lower().strip() == "//au credits":
                     reply("Made by: Lmutt090 (<https://lmutt090.me>) and ClaudiWolf (<https://www.claudiwolf2056.com/>)")
                 elif content.lower().strip().startswith("//au profile "):
@@ -658,6 +746,115 @@ def start_bot():
                                 reply(f"Error updating display name: {e}")
                         else:
                             reply("You must register first!")
+                elif content.lower().strip().startswith("//au badge"):
+                    # //au badge add <username> <badge>
+                    # //au badge remove <username> <badge>
+                    # //au badge list [username]
+                    # //au badge grant <username>
+                    # //au badge revoke <username>
+                    cmd = content.split(None, 2)
+                    sub = cmd[1].lower() if len(cmd) > 1 else ''
+                    rest = cmd[2].strip() if len(cmd) > 2 else ''
+
+                    def get_user_row(name_to_find):
+                        if platform:
+                            return cursor.execute("SELECT * FROM users WHERE AUusername=?", (name_to_find,)).fetchone()
+                        else:
+                            return cursor.execute("SELECT * FROM users WHERE Discordusername=?", (name_to_find,)).fetchone()
+
+                    if sub == 'list':
+                        target = rest or username
+                        user = get_user_row(target)
+                        if not user:
+                            reply("No profile found.")
+                        else:
+                            badges = user[7] or ''
+                            badges_list = [b for b in [x.strip() for x in badges.split(',')] if b]
+                            reply(f"Badges for {target}: {', '.join(badges_list) if badges_list else 'None'}")
+                    elif sub in ('add', 'remove'):
+                        # must have assign permission
+                        caller_row = get_user_row(username)
+                        caller_has_perm = False
+                        if caller_row and len(caller_row) > 8:
+                            caller_has_perm = bool(caller_row[8])
+                        if not caller_has_perm:
+                            reply("You do not have permission to assign or remove badges.")
+                        else:
+                            parts = rest.split(None, 1)
+                            if len(parts) < 2:
+                                reply("Usage: //au badge add|remove <username> <badge>")
+                            else:
+                                target, badge = parts[0].strip(), parts[1].strip()
+                                user = get_user_row(target)
+                                if not user:
+                                    reply("Target user not found.")
+                                else:
+                                    badges = user[7] or ''
+                                    badges_set = set(b for b in [x.strip() for x in badges.split(',')] if b)
+                                    if sub == 'add':
+                                        if badge in badges_set:
+                                            reply(f"{target} already has the badge '{badge}'.")
+                                        else:
+                                            badges_set.add(badge)
+                                            new_badges = ','.join(sorted(badges_set))
+                                            if platform:
+                                                cursor.execute("UPDATE users SET badges=? WHERE AUusername=?", (new_badges, target))
+                                            else:
+                                                cursor.execute("UPDATE users SET badges=? WHERE Discordusername=?", (new_badges, target))
+                                            conn.commit()
+                                            reply(f"Badge '{badge}' added to {target}.")
+                                    else:
+                                        if badge not in badges_set:
+                                            reply(f"{target} does not have the badge '{badge}'.")
+                                        else:
+                                            badges_set.discard(badge)
+                                            new_badges = ','.join(sorted(badges_set))
+                                            if platform:
+                                                cursor.execute("UPDATE users SET badges=? WHERE AUusername=?", (new_badges, target))
+                                            else:
+                                                cursor.execute("UPDATE users SET badges=? WHERE Discordusername=?", (new_badges, target))
+                                            conn.commit()
+                                            reply(f"Badge '{badge}' removed from {target}.")
+                    elif sub == 'grant':
+                        caller_row = get_user_row(username)
+                        caller_is_owner = False
+                        if caller_row and len(caller_row) > 9:
+                            caller_is_owner = bool(caller_row[9])
+                        if not caller_is_owner:
+                            reply("You do not have owner permission to grant badge assignment.")
+                        else:
+                            target = rest.strip()
+                            user = get_user_row(target)
+                            if not user:
+                                reply("Target user not found.")
+                            else:
+                                if platform:
+                                    cursor.execute("UPDATE users SET can_assign_badges=1 WHERE AUusername=?", (target,))
+                                else:
+                                    cursor.execute("UPDATE users SET can_assign_badges=1 WHERE Discordusername=?", (target,))
+                                conn.commit()
+                                reply(f"Granted badge assignment permission to {target}.")
+                    elif sub == 'revoke':
+                        caller_row = get_user_row(username)
+                        caller_is_owner = False
+                        if caller_row and len(caller_row) > 9:
+                            caller_is_owner = bool(caller_row[9])
+                        if not caller_is_owner:
+                            reply("You do not have owner permission to revoke badge assignment.")
+                        else:
+                            target = rest.strip()
+                            user = get_user_row(target)
+                            if not user:
+                                reply("Target user not found.")
+                            else:
+                                if platform:
+                                    cursor.execute("UPDATE users SET can_assign_badges=0 WHERE AUusername=?", (target,))
+                                else:
+                                    cursor.execute("UPDATE users SET can_assign_badges=0 WHERE Discordusername=?", (target,))
+                                conn.commit()
+                                reply(f"Revoked badge assignment permission from {target}.")
+                    else:
+                        reply("Badge commands: //au badge list [username], //au badge add <username> <badge>, //au badge remove <username> <badge>, //au badge grant <username> (owner only), //au badge revoke <username> (owner only)")
                 elif content.lower().strip() == "//au online":
                     reply("/au online")
                     reply("it's /au online, not //au online :/")
