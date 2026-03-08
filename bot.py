@@ -137,9 +137,9 @@ def start_bot():
                         if platform_match:
                             platform_type = platform_match.group(1).strip()
                             norm = re.sub(r'[^a-z0-9]', '', platform_type.lower())
-                            if norm == 'int':
+                            if norm == 'discord': # Orstando changed it from INT to Wii U
                                 platform = None
-                            elif norm == 'wiiu' or platform_type == 'Wii U':
+                            elif norm == 'wiiu' or platform_type == 'wii u':
                                 platform = 'Wii U'
                             else:
                                 platform = platform_type.lower()
