@@ -463,6 +463,8 @@ def start_bot():
                 # to here, can be removed if you want... idrgaf
                 elif content.lower().strip() == "//au help":
                     reply("Aurith commands now start with /at instead of //au to avoid confusion with the main bot's commands. Use /at help for a list of commands!")
+                elif content.lower().strip() == "/at donate":
+                    reply("Oh my god! you found a donate command!\nIf you want to support Aurith, you can do so here: https://ko-fi.com/lmutt090\nThanks for atleast reading this, i never even put it in  the help command ^w^")
 
                 if platform:
                     try:
