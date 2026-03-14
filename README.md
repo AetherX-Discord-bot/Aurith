@@ -1,19 +1,14 @@
 # Aurith
 
 Aurith is a Python-based chat bot designed for AuroraChat servers.  
-It connects to the AuroraChat TCP server, listens for messages, and responds to commands while maintaining user profiles stored in a local SQLite database.
-
-The bot also exposes a small WebSocket interface for profile management and database editing.
+It connects to the AuroraChat server, listens for messages, and responds to commands while maintaining user profiles stored in a local SQLite database.
 
 ## Features
 
-- Connects to AuroraChat via TCP
-- Sends and receives chat messages through the AuroraChat API
-- User profile system stored in SQLite
+- A user profile system stored in SQLite
 - Command-based interaction through chat
-- Badge assignment system
-- Message tracking per user
-- WebSocket server for profile management
+- Badge assignment system (WIP)
+- Message tracking per user and saved in console because of the manual sending support
 - Console input support for sending messages manually
 
 ## Commands
@@ -72,27 +67,3 @@ Aurith stores user information in a SQLite database named:
 | owner | Owner flag |
 
 The database is created automatically on first launch.
-
-## WebSocket API
-
-Aurith starts a WebSocket server on:
-
-localhost:8765
-
-### Supported Actions
-
-- `edit_item`
-- `get_profile`
-- `update_profile`
-
-Requests require authentication using the configured passwords.
-
-Example request:
-
-```json
-{
-  "action": "get_profile",
-  "username": "ExampleUser",
-  "password": "your_api_password"
-}
-```
