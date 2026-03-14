@@ -8,7 +8,9 @@ in the Software without restriction, including without limitation the rights
 to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions: credit must be 
-attributed to all contributors that have worked on Aurith
+attributed to all contributors that have worked on Aurith and the software
+must not be used to scrape messages from AuroraChat servers to identify
+users without their explicit consent and must include a data deletion option.
 
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
