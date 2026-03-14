@@ -7,6 +7,13 @@ import sys
 import requests
 import sqlite3 #im finna chatgpt sqlite3
 import re
+import asyncio
+import websockets
+import json
+name = "main" #fuck it, we ball
+
+conn = None
+cursor = None
 
 IP = "104.236.25.60"
 API_URL = f"http://{IP}:3072/api"
@@ -14,10 +21,13 @@ TCP_PORT = 4040
 print("I'm gonna learn spanish now!")
 
 CONFIG = {
-    "username": "Username",
-    "password": "Password",
+    "username": "stinkyusername",
+    "password": "stinkypassword",
     "platform": "BOT"
 }
+
+PASSWORD_EDIT = "editpassword"
+PASSWORD_PROFILE = "ilitteralyjustputsomethingveryannoyinghere,lmao"
 
 # Event used to control run state instead of uncontrolled while True loops
 run_event = threading.Event()
@@ -60,6 +70,69 @@ def console_input_loop(event: threading.Event):
                 break
         reply(line)
 
+async def ws_handler(websocket, path):
+    global conn, cursor
+    try:
+        async for message in websocket:
+            data = json.loads(message)
+            password = data.get('password')
+            action = data.get('action')
+            if action == 'edit_item':
+                if password != PASSWORD_EDIT:
+                    await websocket.send(json.dumps({"error": "Invalid password for edit"}))
+                    continue
+                username = data.get('username')
+                field = data.get('field')
+                value = data.get('value')
+                try:
+                    cursor.execute(f"UPDATE users SET {field}=? WHERE AUusername=?", (value, username))
+                    conn.commit()
+                    await websocket.send(json.dumps({"status": "item updated"}))
+                except Exception as e:
+                    await websocket.send(json.dumps({"error": str(e)}))
+            elif action == 'get_profile':
+                if password != PASSWORD_PROFILE:
+                    await websocket.send(json.dumps({"error": "Invalid password for profile"}))
+                    continue
+                username = data.get('username')
+                try:
+                    user = cursor.execute("SELECT * FROM users WHERE AUusername=?", (username,)).fetchone()
+                    if user:
+                        profile = {
+                            "id": user[0],
+                            "display": user[1],
+                            "AUusername": user[2],
+                            "Discordusername": user[3],
+                            "bio": user[4],
+                            "friend_code_3ds": user[5],
+                            "messages_sent": user[6],
+                            "badges": user[7],
+                            "can_assign_badges": user[8],
+                            "owner": user[9]
+                        }
+                        await websocket.send(json.dumps(profile))
+                    else:
+                        await websocket.send(json.dumps({"error": "User not found"}))
+                except Exception as e:
+                    await websocket.send(json.dumps({"error": str(e)}))
+            elif action == 'update_profile':
+                if password != PASSWORD_PROFILE:
+                    await websocket.send(json.dumps({"error": "Invalid password for profile"}))
+                    continue
+                username = data.get('username')
+                field = data.get('field')
+                value = data.get('value')
+                try:
+                    cursor.execute(f"UPDATE users SET {field}=? WHERE AUusername=?", (value, username))
+                    conn.commit()
+                    await websocket.send(json.dumps({"status": "profile updated"}))
+                except Exception as e:
+                    await websocket.send(json.dumps({"error": str(e)}))
+            else:
+                await websocket.send(json.dumps({"error": "Unknown action"}))
+    except Exception as e:
+        print(f"WS error: {e}")
+
 # (Duplicate console loop removed)
 
 def start_bot():
@@ -82,6 +155,8 @@ def start_bot():
                     )''')
     conn.commit()
     reply("Aurith is online!")
+    ws_thread = threading.Thread(target=lambda: asyncio.run(websockets.serve(ws_handler, "localhost", 8765)), daemon=True)
+    ws_thread.start()
     # start console input thread
     run_event.set()
     console_thread = threading.Thread(target=console_input_loop, args=(run_event,), daemon=True)
@@ -137,7 +212,7 @@ def start_bot():
                         if platform_match:
                             platform_type = platform_match.group(1).strip()
                             norm = re.sub(r'[^a-z0-9]', '', platform_type.lower())
-                            if norm == 'discord': # Orstando changed it from INT to Wii U
+                            if norm == 'discord':
                                 platform = None
                             elif norm == 'wiiu' or platform_type == 'wii u':
                                 platform = 'Wii U'
@@ -378,9 +453,12 @@ def start_bot():
                                             reply(f"Badge '{badge}' removed from {target}.")
                     else:
                         reply("Badge commands: /at badge list [username], /at badge add <username> <badge>, /at badge remove <username> <badge>")
+                # from here
                 elif content.lower().strip().find("imutt") != -1:
                     reply(f"It's Lmutt, not imutt {username}")
                 elif content.lower().strip().find("lmutt") != -1:
+                    reply("<@1286383453016686705>")
+                elif content.lower().strip().find("rainy") != -1:
                     reply("<@1286383453016686705>")
                 # to here, can be removed if you want... idrgaf
                 elif content.lower().strip() == "//au help":
