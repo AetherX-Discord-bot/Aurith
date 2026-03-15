@@ -10,6 +10,11 @@ import re
 import asyncio
 import websockets
 import json
+import flask
+import hashlib
+import hashlib
+import hashlib
+import hashlib
 name = "main" #fuck it, we ball
 
 conn = None
@@ -22,8 +27,8 @@ BOT_API_PORT = 7871
 print("I'm gonna learn spanish now!")
 
 CONFIG = {
-    "username": "stinkyusername",
-    "password": "stinkypassword",
+    "username": "username",
+    "password": "password",
     "platform": "BOT"
 }
 
@@ -44,6 +49,382 @@ def reply(text):
         "password": CONFIG["password"],
         "platform": CONFIG["platform"]
     })
+
+
+def _get_user_row_by_name(name_to_find):
+    """Return a user row searching AUusername first, then Discordusername."""
+    try:
+        conn = sqlite3.connect('database.db')
+        cursor = conn.cursor()
+        row = cursor.execute("SELECT * FROM users WHERE AUusername=?", (name_to_find,)).fetchone()
+        if row:
+            conn.close()
+            return row, True
+        row = cursor.execute("SELECT * FROM users WHERE Discordusername=?", (name_to_find,)).fetchone()
+        conn.close()
+        return (row, False) if row else (None, None)
+    except Exception:
+        return (None, None)
+
+
+def _profile_dict_from_row(row):
+    if not row:
+        return None
+    # DB columns: id, display, AUusername, Discordusername, bio, friend_code_3ds, messages_sent, badges, can_assign_badges, owner, email
+    d = {
+        "id": row[0],
+        "display": row[1],
+        "au_username": row[2],
+        "discord_username": row[3],
+        "bio": row[4],
+        "friend_code_3ds": row[5],
+        "messages_sent": row[6],
+        "badges": (row[7] or '').split(',') if row[7] else [],
+        "can_assign_badges": bool(row[8]) if len(row) > 8 else False,
+        "owner": bool(row[9]) if len(row) > 9 else False,
+        "email": row[10] if len(row) > 10 else None,
+    }
+    # gravatar
+    email = (d.get("email") or '').strip().lower()
+    if email:
+        h = hashlib.md5(email.encode('utf-8')).hexdigest()
+        d["gravatar"] = f"https://www.gravatar.com/avatar/{h}?d=identicon&s=128"
+    else:
+        d["gravatar"] = "https://www.gravatar.com/avatar/?d=identicon&s=128"
+    return d
+
+
+def start_web():
+    app = flask.Flask(__name__)
+
+    @app.route('/', methods=['GET', 'POST'])
+    def index():
+        if flask.request.method == 'POST':
+            username = flask.request.form.get('username', '').strip()
+            platform = flask.request.form.get('platform', '').strip()
+            resp = flask.make_response(flask.redirect('/profile'))
+            if username:
+                resp.set_cookie('au_user', username, max_age=60*60*24*30)
+            if platform:
+                resp.set_cookie('au_platform', platform, max_age=60*60*24*30)
+            return resp
+
+        return flask.render_template_string('''
+        <html><body>
+        <h2>Who are you?</h2>
+        <form method="post">
+          <label>Username: <input name="username"></label><br>
+          <label>Platform: <select name="platform"><option value="AU">AU</option><option value="Discord">Discord</option></select></label><br>
+          <button type="submit">Save</button>
+        </form>
+        <p>Or view someone: <a href="/user/example">/user/example</a></p>
+        </body></html>
+        ''')
+
+    @app.route('/profile')
+    def profile():
+        username = flask.request.cookies.get('au_user')
+        if not username:
+            return flask.redirect('/')
+        row, is_au = _get_user_row_by_name(username)
+        d = _profile_dict_from_row(row)
+        if not d:
+            return flask.render_template_string('<html><body><p>No profile found for {{u}}</p><p><a href="/">Back</a></p></body></html>', u=username), 404
+        return flask.render_template_string('''
+        <html><body>
+        <h2>Profile for {{p.display or (p.au_username or p.discord_username)}}</h2>
+        <img src="{{p.gravatar}}" alt="avatar"><br>
+        <b>AU username:</b> {{p.au_username}}<br>
+        <b>Discord username:</b> {{p.discord_username}}<br>
+        <b>Bio:</b> {{p.bio}}<br>
+        <b>Friend code:</b> {{p.friend_code_3ds}}<br>
+        <b>Badges:</b> {{p.badges}}<br>
+        <p><a href="/">Change user</a></p>
+        </body></html>
+        ''', p=d)
+
+    @app.route('/user/<string:username>')
+    def public_user(username):
+        row, _ = _get_user_row_by_name(username)
+        d = _profile_dict_from_row(row)
+        if not d:
+            return flask.render_template_string('<html><body><p>No profile found for {{u}}</p><p><a href="/">Back</a></p></body></html>', u=username), 404
+        return flask.render_template_string('''
+        <html><body>
+        <h1></h1>
+        <h2>Public profile: {{p.display or (p.au_username or p.discord_username)}}</h2>
+        <img src="{{p.gravatar}}" alt="avatar"><br>
+        <b>AU username:</b> {{p.au_username}}<br>
+        <b>Discord username:</b> {{p.discord_username}}<br>
+        <b>Bio:</b> {{p.bio}}<br>
+        <b>Badges:</b> {{p.badges}}<br>
+        </body></html>
+        ''', p=d)
+
+    @app.route('/api/user/<string:username>')
+    def api_user(username):
+        row, _ = _get_user_row_by_name(username)
+        d = _profile_dict_from_row(row)
+        if not d:
+            return flask.jsonify({"error": "not found"}), 404
+        return flask.jsonify(d)
+
+    # run in a thread so the main bot loop can continue
+    def run_app():
+        app.run(host='0.0.0.0', port=BOT_API_PORT, debug=False, use_reloader=False)
+
+    t = threading.Thread(target=run_app, daemon=True)
+    t.start()
+
+
+def _get_user_row_by_name(name_to_find):
+    """Return a user row searching AUusername first, then Discordusername."""
+    try:
+        conn = sqlite3.connect('database.db')
+        cursor = conn.cursor()
+        row = cursor.execute("SELECT * FROM users WHERE AUusername=?", (name_to_find,)).fetchone()
+        if row:
+            conn.close()
+            return row, True
+        row = cursor.execute("SELECT * FROM users WHERE Discordusername=?", (name_to_find,)).fetchone()
+        conn.close()
+        return (row, False) if row else (None, None)
+    except Exception:
+        return (None, None)
+
+
+def _profile_dict_from_row(row):
+    if not row:
+        return None
+    # DB columns: id, display, AUusername, Discordusername, bio, friend_code_3ds, messages_sent, badges, can_assign_badges, owner, email
+    d = {
+        "id": row[0],
+        "display": row[1],
+        "au_username": row[2],
+        "discord_username": row[3],
+        "bio": row[4],
+        "friend_code_3ds": row[5],
+        "messages_sent": row[6],
+        "badges": (row[7] or '').split(',') if row[7] else [],
+        "can_assign_badges": bool(row[8]) if len(row) > 8 else False,
+        "owner": bool(row[9]) if len(row) > 9 else False,
+        "email": row[10] if len(row) > 10 else None,
+    }
+    # gravatar
+    email = (d.get("email") or '').strip().lower()
+    if email:
+        h = hashlib.md5(email.encode('utf-8')).hexdigest()
+        d["gravatar"] = f"https://www.gravatar.com/avatar/{h}?d=identicon&s=128"
+    else:
+        d["gravatar"] = "https://www.gravatar.com/avatar/?d=identicon&s=128"
+    return d
+
+
+def start_web():
+    app = flask.Flask(__name__)
+
+    @app.route('/', methods=['GET', 'POST'])
+    def index():
+        if flask.request.method == 'POST':
+            username = flask.request.form.get('username', '').strip()
+            platform = flask.request.form.get('platform', '').strip()
+            resp = flask.make_response(flask.redirect('/profile'))
+            if username:
+                resp.set_cookie('au_user', username, max_age=60*60*24*30)
+            if platform:
+                resp.set_cookie('au_platform', platform, max_age=60*60*24*30)
+            return resp
+
+        return flask.render_template_string('''
+        <html><body>
+        <h2>Who are you?</h2>
+        <form method="post">
+          <label>Username: <input name="username"></label><br>
+          <label>Platform: <select name="platform"><option value="AU">AU</option><option value="Discord">Discord</option></select></label><br>
+          <button type="submit">Save</button>
+        </form>
+        <p>Or view someone: <a href="/user/example">/user/example</a></p>
+        </body></html>
+        ''')
+
+    @app.route('/profile')
+    def profile():
+        username = flask.request.cookies.get('au_user')
+        if not username:
+            return flask.redirect('/')
+        row, is_au = _get_user_row_by_name(username)
+        d = _profile_dict_from_row(row)
+        if not d:
+            return flask.render_template_string('<html><body><p>No profile found for {{u}}</p><p><a href="/">Back</a></p></body></html>', u=username), 404
+        return flask.render_template_string('''
+        <html><body>
+        <h2>Profile for {{p.display or (p.au_username or p.discord_username)}}</h2>
+        <img src="{{p.gravatar}}" alt="avatar"><br>
+        <b>AU username:</b> {{p.au_username}}<br>
+        <b>Discord username:</b> {{p.discord_username}}<br>
+        <b>Bio:</b> {{p.bio}}<br>
+        <b>Friend code:</b> {{p.friend_code_3ds}}<br>
+        <b>Badges:</b> {{p.badges}}<br>
+        <p><a href="/">Change user</a></p>
+        </body></html>
+        ''', p=d)
+
+    @app.route('/user/<string:username>')
+    def public_user(username):
+        row, _ = _get_user_row_by_name(username)
+        d = _profile_dict_from_row(row)
+        if not d:
+            return flask.render_template_string('<html><body><p>No profile found for {{u}}</p><p><a href="/">Back</a></p></body></html>', u=username), 404
+        return flask.render_template_string('''
+        <html><body>
+        <h2>Public profile: {{p.display or (p.au_username or p.discord_username)}}</h2>
+        <img src="{{p.gravatar}}" alt="avatar"><br>
+        <b>AU username:</b> {{p.au_username}}<br>
+        <b>Discord username:</b> {{p.discord_username}}<br>
+        <b>Bio:</b> {{p.bio}}<br>
+        <b>Badges:</b> {{p.badges}}<br>
+        </body></html>
+        ''', p=d)
+
+    @app.route('/api/user/<string:username>')
+    def api_user(username):
+        row, _ = _get_user_row_by_name(username)
+        d = _profile_dict_from_row(row)
+        if not d:
+            return flask.jsonify({"error": "not found"}), 404
+        return flask.jsonify(d)
+
+    # run in a thread so the main bot loop can continue
+    def run_app():
+        app.run(host='0.0.0.0', port=BOT_API_PORT, debug=False, use_reloader=False)
+
+    t = threading.Thread(target=run_app, daemon=True)
+    t.start()
+
+
+def _get_user_row_by_name(name_to_find):
+    """Return a user row searching AUusername first, then Discordusername."""
+    try:
+        conn = sqlite3.connect('database.db')
+        cursor = conn.cursor()
+        row = cursor.execute("SELECT * FROM users WHERE AUusername=?", (name_to_find,)).fetchone()
+        if row:
+            conn.close()
+            return row, True
+        row = cursor.execute("SELECT * FROM users WHERE Discordusername=?", (name_to_find,)).fetchone()
+        conn.close()
+        return (row, False) if row else (None, None)
+    except Exception:
+        return (None, None)
+
+
+def _profile_dict_from_row(row):
+    if not row:
+        return None
+    # DB columns: id, display, AUusername, Discordusername, bio, friend_code_3ds, messages_sent, badges, can_assign_badges, owner, email
+    d = {
+        "id": row[0],
+        "display": row[1],
+        "au_username": row[2],
+        "discord_username": row[3],
+        "bio": row[4],
+        "friend_code_3ds": row[5],
+        "messages_sent": row[6],
+        "badges": (row[7] or '').split(',') if row[7] else [],
+        "can_assign_badges": bool(row[8]) if len(row) > 8 else False,
+        "owner": bool(row[9]) if len(row) > 9 else False,
+        "email": row[10] if len(row) > 10 else None,
+    }
+    # gravatar
+    email = (d.get("email") or '').strip().lower()
+    if email:
+        h = hashlib.md5(email.encode('utf-8')).hexdigest()
+        d["gravatar"] = f"https://www.gravatar.com/avatar/{h}?d=identicon&s=128"
+    else:
+        d["gravatar"] = "https://www.gravatar.com/avatar/?d=identicon&s=128"
+    return d
+
+
+def start_web():
+    app = flask.Flask(__name__)
+
+    @app.route('/', methods=['GET', 'POST'])
+    def index():
+        if flask.request.method == 'POST':
+            username = flask.request.form.get('username', '').strip()
+            platform = flask.request.form.get('platform', '').strip()
+            resp = flask.make_response(flask.redirect('/profile'))
+            if username:
+                resp.set_cookie('au_user', username, max_age=60*60*24*30)
+            if platform:
+                resp.set_cookie('au_platform', platform, max_age=60*60*24*30)
+            return resp
+
+        return flask.render_template_string('''
+        <html><body>
+        <h2>Who are you?</h2>
+        <form method="post">
+          <label>Username: <input name="username"></label><br>
+          <label>Platform: <select name="platform"><option value="AU">AU</option><option value="Discord">Discord</option></select></label><br>
+          <button type="submit">Save</button>
+        </form>
+        <p>Or view someone: <a href="/user/example">/user/example</a></p>
+        </body></html>
+        ''')
+
+    @app.route('/profile')
+    def profile():
+        username = flask.request.cookies.get('au_user')
+        if not username:
+            return flask.redirect('/')
+        row, is_au = _get_user_row_by_name(username)
+        d = _profile_dict_from_row(row)
+        if not d:
+            return flask.render_template_string('<html><body><p>No profile found for {{u}}</p><p><a href="/">Back</a></p></body></html>', u=username), 404
+        return flask.render_template_string('''
+        <html><body>
+        <h2>Profile for {{p.display or (p.au_username or p.discord_username)}}</h2>
+        <img src="{{p.gravatar}}" alt="avatar"><br>
+        <b>AU username:</b> {{p.au_username}}<br>
+        <b>Discord username:</b> {{p.discord_username}}<br>
+        <b>Bio:</b> {{p.bio}}<br>
+        <b>Friend code:</b> {{p.friend_code_3ds}}<br>
+        <b>Badges:</b> {{p.badges}}<br>
+        <p><a href="/">Change user</a></p>
+        </body></html>
+        ''', p=d)
+
+    @app.route('/user/<string:username>')
+    def public_user(username):
+        row, _ = _get_user_row_by_name(username)
+        d = _profile_dict_from_row(row)
+        if not d:
+            return flask.render_template_string('<html><body><p>No profile found for {{u}}</p><p><a href="/">Back</a></p></body></html>', u=username), 404
+        return flask.render_template_string('''
+        <html><body>
+        <h2>Public profile: {{p.display or (p.au_username or p.discord_username)}}</h2>
+        <img src="{{p.gravatar}}" alt="avatar"><br>
+        <b>AU username:</b> {{p.au_username}}<br>
+        <b>Discord username:</b> {{p.discord_username}}<br>
+        <b>Bio:</b> {{p.bio}}<br>
+        <b>Badges:</b> {{p.badges}}<br>
+        </body></html>
+        ''', p=d)
+
+    @app.route('/api/user/<string:username>')
+    def api_user(username):
+        row, _ = _get_user_row_by_name(username)
+        d = _profile_dict_from_row(row)
+        if not d:
+            return flask.jsonify({"error": "not found"}), 404
+        return flask.jsonify(d)
+
+    # run in a thread so the main bot loop can continue
+    def run_app():
+        app.run(host='0.0.0.0', port=BOT_API_PORT, debug=False, use_reloader=False)
+
+    t = threading.Thread(target=run_app, daemon=True)
+    t.start()
 
 def console_input_loop(event: threading.Event):
     """Read lines from the console and send them to chat while `event` is set."""
@@ -85,10 +466,12 @@ def start_bot():
                         friend_code_3ds integer,
                         messages_sent integer DEFAULT 0,
                         badges TEXT DEFAULT '',
+                        email TEXT,
                         can_assign_badges INTEGER DEFAULT 0,
                         owner INTEGER DEFAULT 0
                     )''')
     conn.commit()
+    start_web()
     reply("Aurith is online!")
     # start console input thread
     run_event.set()
@@ -159,11 +542,11 @@ def start_bot():
                 if content.lower().strip() == "/at hello":
                     reply("Hello, Im Dr. Sex")
                 elif content.lower().strip() == "/at help":
-                    reply("Available commands: DO THIS FIRST: /at register\n/at credits, /at profile [username], /at setbio [bio], /at setfc [friend code], /at setdisplayname [display name]\nuse /au help for the regular bot's commands")
+                    reply("Available commands: DO THIS FIRST: /at register\n/at credits, /profile [username] (/at dash), /at setbio [bio], /at setfc [friend code], /at setdisplayname [display name]\nuse /au help for the regular bot's commands")
                 elif content.lower().strip() == "/at credits":
                     reply("Made by: Lmutt090 (<https://lmutt090.me>) and ClaudiWolf (<https://www.claudiwolf2056.com/>)") # Please do not remove the credits from these people, atleast to the people who fork this...
-                elif content.lower().strip().startswith("/at profile "):
-                    musername = content[12:].strip()
+                elif content.lower().strip().startswith("/profile "):
+                    musername = content[9:].strip()
                     if not musername:
                         musername = username
 
@@ -398,6 +781,8 @@ def start_bot():
                     reply("Aurith commands now start with /at instead of //au to avoid confusion with the main bot's commands. Use /at help for a list of commands!")
                 elif content.lower().strip() == "/at donate":
                     reply("Oh my god! you found a donate command!\nIf you want to support Aurith, you can do so here: https://ko-fi.com/lmutt090\nThanks for atleast reading this, i never even put it in  the help command ^w^")
+                elif content.lower().strip() == "/at dash":
+                        reply("The open beta dashboard is at https://aurith.aether-x.org you cant actually change your profile yet... also ask Lmutt090 to add an Email to it")   
 
                 if platform:
                     try:
