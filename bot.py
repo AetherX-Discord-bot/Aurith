@@ -796,7 +796,7 @@ def start_bot():
                 elif content.lower().strip() == "/at donate":
                     reply("Oh my god! you found a donate command!\nIf you want to support Aurith, you can do so here: https://ko-fi.com/lmutt090\nThanks for atleast reading this, i never even put it in  the help command ^w^")
                 elif content.lower().strip() == "/at dash":
-                        reply("The open beta dashboard is at https://aurith.aether-x.org you cant actually change your profile yet... also ask Lmutt090 to add an Email to it")   
+                        reply("The open beta dashboard is at https://aurith.aether-x.org you cant actually change your profile yet... also ask Lmutt090 to add an Email to your profile to get a profile picture :)")   
 
                 if platform:
                     try:
