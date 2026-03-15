@@ -2,6 +2,7 @@ import socket
 import time
 import threading
 import sys
+import logging
 import threading
 import sys
 import requests
@@ -27,8 +28,8 @@ BOT_API_PORT = 7871
 print("I'm gonna learn spanish now!")
 
 CONFIG = {
-    "username": "username",
-    "password": "password",
+    "username": "Aurith",
+    "password": "DiscordClankerslm40",
     "platform": "BOT"
 }
 
@@ -411,16 +412,29 @@ def start_web():
         </body></html>
         ''', p=d)
 
+    @app.route('/api/user/', defaults={'username': None})
     @app.route('/api/user/<string:username>')
     def api_user(username):
+        if not username:
+            return flask.jsonify({"username": "no username gotten"}), 400
+
         row, _ = _get_user_row_by_name(username)
         d = _profile_dict_from_row(row)
         if not d:
-            return flask.jsonify({"error": "not found"}), 404
-        return flask.jsonify(d)
+            return flask.jsonify({"username": username, "error": "not found"}), 404
+
+        d["requested_username"] = username
+        return flask.jsonify(d), 200
 
     # run in a thread so the main bot loop can continue
     def run_app():
+        # Suppress the Flask/werkzeug production warning/banner in a non-dev deployment
+        try:
+            import flask.cli
+            flask.cli.show_server_banner = lambda *args, **kwargs: None
+        except Exception:
+            pass
+        logging.getLogger('werkzeug').setLevel(logging.ERROR)
         app.run(host='0.0.0.0', port=BOT_API_PORT, debug=False, use_reloader=False)
 
     t = threading.Thread(target=run_app, daemon=True)
@@ -508,9 +522,6 @@ def start_bot():
                 raw_msg = data.decode("utf-8", errors="ignore").strip()
                 print(f"[CHAT] {raw_msg}")
 
-                if CONFIG["username"] in raw_msg:
-                    continue
-
                 parts = raw_msg.split(": ")
                 content = parts[-1] if len(parts) >= 2 else raw_msg
 
@@ -537,6 +548,9 @@ def start_bot():
                     except Exception as e:
                         print(f"Error extracting platform: {e}")
                         platform = None
+
+                if username == CONFIG["username"]:
+                    continue
 
                 # command handling (unchanged logic)
                 if content.lower().strip() == "/at hello":
