@@ -387,7 +387,7 @@ def start_bot():
                         if platform_match:
                             platform_type = platform_match.group(1).strip()
                             norm = re.sub(r'[^a-z0-9]', '', platform_type.lower())
-                            if norm == 'discord':
+                            if norm == 'discord' or norm = 'fluxer':
                                 platform = None
                             elif norm == 'wiiu' or platform_type == 'wii u':
                                 platform = 'Wii U'
