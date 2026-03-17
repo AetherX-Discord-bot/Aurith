@@ -25,8 +25,8 @@ BOT_API_PORT = 7871
 print("I'm gonna learn spanish now!")
 
 CONFIG = {
-    "username": "Aurith",
-    "password": "DiscordClankerslm40",
+    "username": "username",
+    "password": "password",
     "platform": "BOT"
 }
 
@@ -133,7 +133,37 @@ def start_web():
         <p>If you wanna see the source code, it's at <a href="https://github.com/AetherX-Discord-Bot/Aurith">https://github.com/AetherX-Discord-Bot/Aurith</a> and is the base for the bot library... you may want to CHANGE ALOT if you dont wanna be hit by ban because you basically stole my bot, that's big nono on license! >:(</p>
         <p>Use /at help for the commands... blah blah blah, you get the gist</p>
         <p>Oh, there's a page to see profiles. But it's a work in progress... it's at the <a href="..">Main Page</a></p>
+        <p style="font-size:smaller;color:gray"><a href="../LICENSE">View the License here</a></p>
         </body></html>
+        ''')
+
+    @app.route('/license')
+    def license():
+        return flask.render_template_string('''
+            MIT License
+
+            Copyright (c) 2026 Lmutt090
+
+            Permission is hereby granted, free of charge, to any person obtaining a copy
+            of this software and associated documentation files (the "Software"), to deal
+            in the Software without restriction, including without limitation the rights
+            to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+            copies of the Software, and to permit persons to whom the Software is
+            furnished to do so, subject to the following conditions: credit must be 
+            attributed to all contributors that have worked on Aurith and the software
+            must not be used to scrape messages from AuroraChat servers to identify
+            users without their explicit consent and must include a data deletion option.
+
+            The above copyright notice and this permission notice shall be included in all
+            copies or substantial portions of the Software.
+
+            THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+            IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+            FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+            AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+            LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+            OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+            SOFTWARE.
         ''')
 
     @app.route('/profile')
