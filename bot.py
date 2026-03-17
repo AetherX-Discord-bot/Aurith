@@ -129,11 +129,11 @@ def start_web():
         <html><body>
         <h2>Aurith Info</h2>
         <p>Aurith is a bot made by Lmutt090 and ClaudiWolf to have profiles for everyone on AuroraChat.</p>
-        <p>There is litteraly only ONE command that is hidden... and it's to give me money, so uh... yeah... great bot!</p>
-        <p>If you wanna see the source code, it's at <a href="https://github.com/AetherX-Discord-Bot/Aurith">https://github.com/AetherX-Discord-Bot/Aurith</a> and is the base for the bot library... you may want to CHANGE ALOT if you dont wanna be hit by ban because you basically stole my bot, that's big nono on license! >:(</p>
+        <p>There is litteraly only ONE command that is hidden... so, uh... yeah... great bot!</p>
+        <p>If you wanna see the source code, it's at <a href="https://github.com/AetherX-Discord-Bot/Aurith">https://github.com/AetherX-Discord-Bot/Aurith</a> and is the base for the bot library... you may want to CHANGE ALOT... please?</p>
         <p>Use /at help for the commands... blah blah blah, you get the gist</p>
         <p>Oh, there's a page to see profiles. But it's a work in progress... it's at the <a href="..">Main Page</a></p>
-        <p style="font-size:smaller;color:gray"><a href="../LICENSE">View the License here</a></p>
+        <p style="font-size:smaller;color:gray"><a href="../license">View the License here</a></p>
         </body></html>
         ''')
 
@@ -141,9 +141,9 @@ def start_web():
     def license():
         return flask.render_template_string('''
             MIT License
-
+            <br>
             Copyright (c) 2026 Lmutt090
-
+            <br>
             Permission is hereby granted, free of charge, to any person obtaining a copy
             of this software and associated documentation files (the "Software"), to deal
             in the Software without restriction, including without limitation the rights
@@ -153,10 +153,10 @@ def start_web():
             attributed to all contributors that have worked on Aurith and the software
             must not be used to scrape messages from AuroraChat servers to identify
             users without their explicit consent and must include a data deletion option.
-
+            <br>
             The above copyright notice and this permission notice shall be included in all
             copies or substantial portions of the Software.
-
+            <br>
             THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
             IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
             FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -404,7 +404,7 @@ def start_bot():
                 if content.lower().strip() == "/at hello":
                     reply("Hello, Im Dr. Sex")
                 elif content.lower().strip() == "/at info" or content.lower().strip() == "/at about":
-                    reply("Aurith is a bot made by Lmutt090 and ClaudiWolf to have profiles for everyone on AuroraChat.\nThere is litteraly only ONE command that is hidden... and it's to give me money, so uh... yeah... great bot!\nThere is a webpage if you wanna see more, https://aurith.aether-x.org/info")
+                    reply("Aurith is a bot made by Lmutt090 and ClaudiWolf to have profiles for everyone on AuroraChat.\nThere is litteraly only ONE command that is hidden... so, uh... yeah... great bot!\nThere is a webpage if you wanna see more, https://aurith.aether-x.org/info\n(also, if i ever make a pay to use feature in the bot, please fork this and make your own... please...)")
                 elif content.lower().strip() == "/at help" or content.lower().strip() == "/at commands" or content.lower().strip() == "/at":
                     reply("Available commands: DO THIS FIRST: /at register\n/at credits, /profile [username] (/at dash), /at info\nregistered users only: /at setbio [bio], /at setfc [friend code], /at setdisplayname [display name]\nuse /au help for the regular bot's commands")
                 elif content.lower().strip() == "/at credits":
