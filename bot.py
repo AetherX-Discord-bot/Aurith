@@ -403,10 +403,10 @@ def start_bot():
                 # command handling (unchanged logic)
                 if content.lower().strip() == "/at hello":
                     reply("Hello, Im Dr. Sex")
-                elif content.lower().strip() == "/at info":
+                elif content.lower().strip() == "/at info" or content.lower().strip() == "/at about":
                     reply("Aurith is a bot made by Lmutt090 and ClaudiWolf to have profiles for everyone on AuroraChat.\nThere is litteraly only ONE command that is hidden... and it's to give me money, so uh... yeah... great bot!\nThere is a webpage if you wanna see more, https://aurith.aether-x.org/info")
-                elif content.lower().strip() == "/at help":
-                    reply("Available commands: DO THIS FIRST: /at register\n/at credits, /profile [username] (/at dash), /at setbio [bio], /at setfc [friend code], /at setdisplayname [display name]\nuse /au help for the regular bot's commands")
+                elif content.lower().strip() == "/at help" or content.lower().strip() == "/at commands" or content.lower().strip() == "/at":
+                    reply("Available commands: DO THIS FIRST: /at register\n/at credits, /profile [username] (/at dash), /at info\nregistered users only: /at setbio [bio], /at setfc [friend code], /at setdisplayname [display name]\nuse /au help for the regular bot's commands")
                 elif content.lower().strip() == "/at credits":
                     reply("Made by: Lmutt090 (<https://lmutt090.me>) and ClaudiWolf (<https://www.claudiwolf2056.com/>)") # Please do not remove the credits from these people, atleast to the people who fork this...
                 elif content.lower().strip().startswith("/profile "):
