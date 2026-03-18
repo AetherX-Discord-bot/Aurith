@@ -372,6 +372,7 @@ def start_bot():
 
                 parts = raw_msg.split(": ")
                 content = parts[-1] if len(parts) >= 2 else raw_msg
+                content = content.strip("'")  # Bandaid fix for server bug wrapping messages in quotes
 
                 # Try to infer the username from the message before the final ': '
                 username = CONFIG["username"]
