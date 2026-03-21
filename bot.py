@@ -50,11 +50,16 @@ def reply(text):
     })
 
 
-def _get_user_row_by_name(name_to_find):
+def _get_user_row_by_name(name_to_find, discord_first=False):
     """Return a user row searching AUusername first, then Discordusername."""
     try:
         conn = sqlite3.connect('database.db')
         cursor = conn.cursor()
+        if discord_first:
+            row = cursor.execute("SELECT * FROM users WHERE Discordusername=?", (name_to_find,)).fetchone()
+            if row:
+                conn.close()
+                return row, False
         row = cursor.execute("SELECT * FROM users WHERE AUusername=?", (name_to_find,)).fetchone()
         if row:
             conn.close()
@@ -66,7 +71,7 @@ def _get_user_row_by_name(name_to_find):
         return (None, None)
 
 
-def _profile_dict_from_row(row, authorized):
+def _profile_dict_from_row(row, authorized=False):
     if not row:
         return None
 
@@ -732,13 +737,22 @@ def start_bot():
                     reply("Oh my god! you found a donate command!\nIf you want to support Aurith, you can do so here: https://ko-fi.com/lmutt090\nThanks for atleast reading this, i never even put it in  the help command ^w^")
                 elif content.lower().strip() == "/at dash":
                         reply("The open beta dashboard is at https://aurith.aether-x.org you cant actually change your profile yet... also ask Lmutt090 to add an Email to your profile to get a profile picture :)")
-                elif content.lower().strip() == "/at stinky":
-                    pain = _profile_dict_from_row(_get_user_row_by_name(username), False)
-                    is_owner = pain and pain.get("owner", False)
+                elif content.lower().strip() == "/at stinky": # If someone can make this work, I will really appreciate you
+                    if platform == 'Discord':
+                        row, is_au = _get_user_row_by_name(username, True)
+                        d = _profile_dict_from_row(row)
+                    else:
+                        row, is_au = _get_user_row_by_name(username, False)
+                        d = _profile_dict_from_row(row)
+                    is_owner = d and d.get("owner", False)
                     if is_owner:
                         stinky = not stinky
                         status = "enabled" if stinky else "disabled"
                         reply(f"Web-only profile/command viewing has been {status}.")
+                        print(f"Stinky mode {'enabled' if stinky else 'disabled'} by {username} on {platform if platform else 'unknown platform'}")
+                    else:
+                        reply("You do not have permission to use this command.")
+                        print(f"{username} on {platform if platform else 'unknown platform'} attempted to toggle stinky mode without permission.")
 
                 if platform:
                     try:
