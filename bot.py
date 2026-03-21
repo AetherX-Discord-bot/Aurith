@@ -95,7 +95,7 @@ def _profile_dict_from_row(row, authorized=False):
         d["email"] = row[10]
 
     # gravatar
-    email = ((row[10] or row[1]) or '').strip().lower()
+    email = str(((row[10] or row[1]) or '')).strip().lower()
     h = hashlib.md5(email.encode('utf-8')).hexdigest()
     d["gravatar"] = f"https://www.gravatar.com/avatar/{h}?d=identicon&s=128"
 
