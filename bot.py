@@ -337,7 +337,6 @@ def start_bot():
             reply("Aurith is shutting down (web-only mode)")
             print("Web server has shut down.")
         return
-    stinky = False
     print("Iniciando bot...")
     send_request({"cmd": "CONNECT", "version": "1.0", "platform": "BOT"})
     send_request({"cmd": "LOGINACC", "username": CONFIG["username"], "password": CONFIG["password"]})
@@ -363,6 +362,11 @@ def start_bot():
                         write INTEGER DEFAULT 0,
                         read_email INTEGER DEFAULT 0
                     )''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS internalsettings (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        setting_name TEXT UNIQUE,
+                        setting_value TEXT
+                    )''')
     conn.commit()
     if CONFIG["webonly"]:
         print("Starting web server only...")
@@ -379,6 +383,8 @@ def start_bot():
         return
     start_web()
     reply("Aurith is online!")
+    stinky = cursor.execute("SELECT setting_value FROM internalsettings WHERE setting_name='stinky_mode'").fetchone()
+    stinky = bool(int(stinky[0])) if stinky else False
     # start console input thread
     run_event.set()
     console_thread = threading.Thread(target=console_input_loop, args=(run_event,), daemon=True)
@@ -748,6 +754,8 @@ def start_bot():
                     if is_owner:
                         stinky = not stinky
                         status = "enabled" if stinky else "disabled"
+                        cursor.execute("INSERT OR REPLACE INTO internalsettings (setting_name, setting_value) VALUES (?, ?)", ("stinky_mode", "1" if stinky else "0"))
+                        conn.commit()
                         reply(f"Web-only profile/command viewing has been {status}.")
                         print(f"Stinky mode {'enabled' if stinky else 'disabled'} by {username} on {platform if platform else 'unknown platform'}")
                     else:
