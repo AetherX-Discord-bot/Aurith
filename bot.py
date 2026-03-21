@@ -148,7 +148,7 @@ def start_web():
         <html><body>
         <h2>Aurith Commands</h2>
         <p>/at register</p>
-        <p>/at credits, /profile [username] (/at dash), /at info</p>
+        <p>/at credits, /profile [username] (/at dash), /at info, /at source, /at bugbounty</p>
         <p>registered users only: /at setbio [bio], /at setfc [friend code], /at setdisplayname [display name]</p>
         <p>done with Aurith? use /at delete</p>
         </body></html>
@@ -485,7 +485,7 @@ def start_bot():
                         reply(f"Command viewing is currently web-only. Please visit https://aurith.aether-x.org/commands.")
                         continue
 
-                    reply("Available commands: DO THIS FIRST: /at register\n/at credits, /profile [username] (/at dash), /at info\nregistered users only: /at setbio [bio], /at setfc [friend code], /at setdisplayname [display name]\nuse /au help for the regular bot's commands")
+                    reply("Available commands: DO THIS FIRST: /at register\n/at credits, /profile [username] (/at dash), /at info, /at source\nregistered users only: /at setbio [bio], /at setfc [friend code], /at setdisplayname [display name]\nuse /au help for the regular bot's commands")
                 elif content.lower().strip() == "/at credits":
                     reply("Made by: Lmutt090 (<https://lmutt090.me>) and ClaudiWolf (<https://www.claudiwolf2056.com/>)") # Please do not remove the credits from these people, atleast to the people who fork this...
                 elif content.lower().strip().startswith("/profile "):
@@ -737,7 +737,7 @@ def start_bot():
                     reply("Oh my god! you found a donate command!\nIf you want to support Aurith, you can do so here: https://ko-fi.com/lmutt090\nThanks for atleast reading this, i never even put it in  the help command ^w^")
                 elif content.lower().strip() == "/at dash":
                         reply("The open beta dashboard is at https://aurith.aether-x.org you cant actually change your profile yet... also ask Lmutt090 to add an Email to your profile to get a profile picture :)")
-                elif content.lower().strip() == "/at stinky": # If someone can make this work, I will really appreciate you
+                elif content.lower().strip() == "/at stinky":
                     if platform == 'Discord':
                         row, is_au = _get_user_row_by_name(username, True)
                         d = _profile_dict_from_row(row)
@@ -753,6 +753,10 @@ def start_bot():
                     else:
                         reply("You do not have permission to use this command.")
                         print(f"{username} on {platform if platform else 'unknown platform'} attempted to toggle stinky mode without permission.")
+                elif content.lower().strip() == "/at bugbounty":
+                    reply("If you find a bug in Aurith, please report it to Lmutt090 on Discord. I don't have any money to give you for bug bounties though... But I will appreciate the help!")
+                elif content.lower().strip() == "/at source":
+                    reply("Aurith is open source! You can find the code on GitHub: https://github.com/AetherX-Discord-Bot/Aurith")
 
                 if platform:
                     try:
