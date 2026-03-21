@@ -25,7 +25,7 @@ BOT_API_PORT = 7871
 print("I'm gonna learn spanish now!")
 
 CONFIG = {
-    "username": "aurith",
+    "username": "username",
     "password": "password",
     "platform": "BOT",
     "webonly": False
@@ -359,6 +359,19 @@ def start_bot():
                         read_email INTEGER DEFAULT 0
                     )''')
     conn.commit()
+    if CONFIG["webonly"]:
+        print("Starting web server only...")
+        start_web()
+        reply("Aurith is online in web-only mode!")
+        print("Web server is running. Press Ctrl+C to stop.")
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\nShutting down web server...")
+            reply("Aurith is shutting down (web-only mode)")
+            print("Web server has shut down.")
+        return
     start_web()
     reply("Aurith is online!")
     # start console input thread
