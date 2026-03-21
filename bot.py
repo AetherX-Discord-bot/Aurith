@@ -88,14 +88,14 @@ def _profile_dict_from_row(row, authorized=False):
         "display": row[6],
         "badges": (row[7] or '').split(',') if row[7] else [],
         "can_assign_badges": bool(row[8]),
-        "owner": bool(row[9]),
+        "owner": bool(row[10]),
     }
 
     if authorized == True:
         d["email"] = row[10]
 
     # gravatar
-    email = str(((row[10] or row[1]) or '')).strip().lower()
+    email = str(((row[8] or row[1]) or '')).strip().lower()
     h = hashlib.md5(email.encode('utf-8')).hexdigest()
     d["gravatar"] = f"https://www.gravatar.com/avatar/{h}?d=identicon&s=128"
 
