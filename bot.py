@@ -25,9 +25,10 @@ BOT_API_PORT = 7871
 print("I'm gonna learn spanish now!")
 
 CONFIG = {
-    "username": "username",
+    "username": "aurith",
     "password": "password",
-    "platform": "BOT"
+    "platform": "BOT",
+    "webonly": False
 }
 
 # Event used to control run state instead of uncontrolled while True loops
@@ -134,6 +135,17 @@ def start_web():
         <p>Use /at help for the commands... blah blah blah, you get the gist</p>
         <p>Oh, there's a page to see profiles. But it's a work in progress... it's at the <a href="..">Main Page</a></p>
         <p style="font-size:smaller;color:gray"><a href="../license">View the License here</a></p>
+        </body></html>
+        ''')
+    @app.route('/commands')
+    def commands():
+        return flask.render_template_string('''
+        <html><body>
+        <h2>Aurith Commands</h2>
+        <p>/at register</p>
+        <p>/at credits, /profile [username] (/at dash), /at info</p>
+        <p>registered users only: /at setbio [bio], /at setfc [friend code], /at setdisplayname [display name]</p>
+        <p>done with Aurith? use /at delete</p>
         </body></html>
         ''')
 
@@ -307,6 +319,20 @@ def console_input_loop(event: threading.Event):
 # (Duplicate console loop removed)
 
 def start_bot():
+    if CONFIG["webonly"]:
+        print("Starting web server only...")
+        start_web()
+        reply("Aurith is online in web-only mode!")
+        print("Web server is running. Press Ctrl+C to stop.")
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\nShutting down web server...")
+            reply("Aurith is shutting down (web-only mode)")
+            print("Web server has shut down.")
+        return
+    stinky = False
     print("Iniciando bot...")
     send_request({"cmd": "CONNECT", "version": "1.0", "platform": "BOT"})
     send_request({"cmd": "LOGINACC", "username": CONFIG["username"], "password": CONFIG["password"]})
@@ -370,35 +396,65 @@ def start_bot():
                 raw_msg = data.decode("utf-8", errors="ignore").strip()
                 print(f"[CHAT] {raw_msg}")
 
-                parts = raw_msg.split(": ")
-                content = parts[-1] if len(parts) >= 2 else raw_msg
-                content = content.strip("'")  # Bandaid fix for server bug wrapping messages in quotes
+                # Check if message is in new pipe-separated format
+                if raw_msg.startswith("CHAT|") or raw_msg.startswith("DM|"):
+                    parts = raw_msg.split("|")
+                    if raw_msg.startswith("DM|") and len(parts) >= 5:
+                        # DM|RECEIVER|TAG|USERNAME|MESSAGE
+                        message_type = "DM"
+                        receiver = parts[1]
+                        tag = parts[2]
+                        username = parts[3]
+                        content = "|".join(parts[4:])  # Join remaining parts in case message contains |
+                        platform = tag  # TAG might represent platform
+                    elif raw_msg.startswith("CHAT|") and len(parts) >= 4:
+                        # CHAT|TAG|USERNAME|MESSAGE
+                        message_type = "CHAT"
+                        tag = parts[1]
+                        username = parts[2]
+                        content = "|".join(parts[3:])  # Join remaining parts in case message contains |
+                        platform = tag  # TAG might represent platform
+                        receiver = None
+                    else:
+                        # Malformed new format, skip
+                        continue
+                else:
+                    # Legacy format parsing
+                    message_type = "CHAT"
+                    receiver = None
+                    parts = raw_msg.split(": ")
+                    content = parts[-1] if len(parts) >= 2 else raw_msg
+                    content = content.strip("'")  # Bandaid fix for server bug wrapping messages in quotes
 
-                # Try to infer the username from the message before the final ': '
-                username = CONFIG["username"]
-                platform = None
-                if len(parts) >= 2:
-                    candidate = parts[-2].strip()
-                    candidate = candidate.replace('<', '').replace('>', '')
-                    tokens = re.split(r'[\s\(\)\[\]\{\}]+', candidate.strip())
-                    username = next((t for t in reversed(tokens) if t), CONFIG["username"])
+                    # Try to infer the username from the message before the final ': '
+                    username = CONFIG["username"]
+                    platform = None
+                    if len(parts) >= 2:
+                        candidate = parts[-2].strip()
+                        candidate = candidate.replace('<', '').replace('>', '')
+                        tokens = re.split(r'[\s\(\)\[\]\{\}]+', candidate.strip())
+                        username = next((t for t in reversed(tokens) if t), CONFIG["username"])
 
-                    try:
-                        platform_match = re.search(r'\(([^)]+)\)', parts[-2])
-                        if platform_match:
-                            platform_type = platform_match.group(1).strip()
-                            norm = re.sub(r'[^a-z0-9]', '', platform_type.lower())
-                            if norm == 'discord':
-                                platform = None
-                            elif norm == 'wiiu' or platform_type == 'wii u':
-                                platform = 'Wii U'
-                            else:
-                                platform = platform_type.lower()
-                    except Exception as e:
-                        print(f"Error extracting platform: {e}")
-                        platform = None
+                        try:
+                            platform_match = re.search(r'\(([^)]+)\)', parts[-2])
+                            if platform_match:
+                                platform_type = platform_match.group(1).strip()
+                                norm = re.sub(r'[^a-z0-9]', '', platform_type.lower())
+                                if norm == 'discord':
+                                    platform = None
+                                elif norm == 'wiiu' or platform_type == 'wii u':
+                                    platform = 'Wii U'
+                                else:
+                                    platform = platform_type.lower()
+                        except Exception as e:
+                            print(f"Error extracting platform: {e}")
+                            platform = None
 
                 if username == CONFIG["username"]:
+                    continue
+
+                # For DMs, only process if this bot is the receiver
+                if message_type == "DM" and receiver != CONFIG["username"]:
                     continue
 
                 # command handling (unchanged logic)
@@ -407,6 +463,10 @@ def start_bot():
                 elif content.lower().strip() == "/at info" or content.lower().strip() == "/at about":
                     reply("Aurith is a bot made by Lmutt090 and ClaudiWolf to have profiles for everyone on AuroraChat.\nThere is litteraly only ONE command that is hidden... so, uh... yeah... great bot!\nThere is a webpage if you wanna see more, https://aurith.aether-x.org/info\n(also, if i ever make a pay to use feature in the bot, please fork this and make your own... please...)")
                 elif content.lower().strip() == "/at help" or content.lower().strip() == "/at commands" or content.lower().strip() == "/at":
+                    if stinky:
+                        reply(f"Command viewing is currently web-only. Please visit https://aurith.aether-x.org/commands.")
+                        continue
+
                     reply("Available commands: DO THIS FIRST: /at register\n/at credits, /profile [username] (/at dash), /at info\nregistered users only: /at setbio [bio], /at setfc [friend code], /at setdisplayname [display name]\nuse /au help for the regular bot's commands")
                 elif content.lower().strip() == "/at credits":
                     reply("Made by: Lmutt090 (<https://lmutt090.me>) and ClaudiWolf (<https://www.claudiwolf2056.com/>)") # Please do not remove the credits from these people, atleast to the people who fork this...
@@ -414,6 +474,10 @@ def start_bot():
                     musername = content[9:].strip()
                     if not musername:
                         musername = username
+
+                    if stinky:
+                        reply(f"Profile viewing is currently web-only. Please visit https://aurith.aether-x.org/user/{musername}.")
+                        continue
 
                     cursor.execute("SELECT * FROM users WHERE AUusername=?", (musername,))
                     user = cursor.fetchone()
@@ -530,10 +594,15 @@ def start_bot():
                 elif content.lower().strip() == "/at delete":
                     exsists = cursor.execute("SELECT * FROM users WHERE AUusername=?", (username,)).fetchone()
                     if exsists:
-                        if platform:
+                        if platform not in ('Discord', 'Fluxer'):
                             cursor.execute("DELETE FROM users WHERE AUusername=?", (username,))
-                        else:
+                        elif platform == 'Discord':
                             cursor.execute("DELETE FROM users WHERE Discordusername=?", (username,))
+                        elif platform == 'Fluxer':
+                            cursor.execute("DELETE FROM users WHERE AUusername=? OR Discordusername=?", (username, username))
+                        else:
+                            reply("Unknown platform, cannot delete.")
+                            return
                         conn.commit()
                         reply("You have been unregistered.")
                     else:
@@ -650,6 +719,13 @@ def start_bot():
                     reply("Oh my god! you found a donate command!\nIf you want to support Aurith, you can do so here: https://ko-fi.com/lmutt090\nThanks for atleast reading this, i never even put it in  the help command ^w^")
                 elif content.lower().strip() == "/at dash":
                         reply("The open beta dashboard is at https://aurith.aether-x.org you cant actually change your profile yet... also ask Lmutt090 to add an Email to your profile to get a profile picture :)")
+                elif content.lower().strip() == "/at stinky":
+                    pain = _profile_dict_from_row(_get_user_row_by_name(username), False)
+                    is_owner = pain and pain.get("owner", False)
+                    if is_owner:
+                        stinky = not stinky
+                        status = "enabled" if stinky else "disabled"
+                        reply(f"Web-only profile/command viewing has been {status}.")
 
                 if platform:
                     try:
