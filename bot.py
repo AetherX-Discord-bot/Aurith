@@ -13,6 +13,13 @@ import websockets
 import json
 import flask
 import hashlib
+import secrets
+import random
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
 name = "main" #fuck it, we ball
 
 conn = None
@@ -25,8 +32,10 @@ BOT_API_PORT = 7871
 print("I'm gonna learn spanish now!")
 
 CONFIG = {
-    "username": "username",
-    "password": "password",
+    "username": os.getenv("username"),
+    "password": os.getenv("password"),
+    "rawchat": True,
+    "rawchat_key": os.getenv("rawchat_key"),
     "platform": "BOT",
     "webonly": False
 }
@@ -41,13 +50,22 @@ def send_request(payload):
 
 def reply(text):
     time.sleep(0.5)
-    send_request({
-        "cmd": "CHAT",
-        "content": text,
-        "username": CONFIG["username"],
-        "password": CONFIG["password"],
-        "platform": CONFIG["platform"]
-    })
+    if CONFIG.get("rawchat"):
+        payload = {
+            "cmd": "RAWCHAT",
+            "rawkey": CONFIG["rawchat_key"],
+            "content": f'{CONFIG["username"]}: {text}',
+            "platform": CONFIG["platform"]
+        }
+    else:
+        payload = {
+            "cmd": "CHAT",
+            "content": text, # dont use the rawchat version because it looks weird in chat
+            "username": CONFIG["username"],
+            "password": CONFIG["password"],
+            "platform": CONFIG["platform"]
+        }
+    send_request(payload)
 
 
 def _get_user_row_by_name(name_to_find, discord_first=False):
@@ -93,6 +111,7 @@ def _profile_dict_from_row(row, authorized=False):
 
     if authorized == True:
         d["email"] = row[10]
+        d["pointless_hexadecimal"] = row[11]
 
     # gravatar
     email = str(((row[8] or row[1]) or '')).strip().lower()
@@ -102,8 +121,179 @@ def _profile_dict_from_row(row, authorized=False):
     return d
 
 
+def do_pokehunt(username, is_auto=False):
+    conn_local = sqlite3.connect('database.db')
+    cursor_local = conn_local.cursor()
+    try:
+        cursor_local.execute("SELECT * FROM pokemen")
+        pokestaff = cursor_local.fetchall()
+
+        if not pokestaff:
+            if not is_auto:
+                reply("Lmutt090 is lazy")
+            return
+
+        cursor_local.execute("SELECT * FROM pokemen_inventory WHERE user=?", (username,))
+        inventory = cursor_local.fetchone()
+
+        if not inventory:
+            try:
+                cursor_local.execute("INSERT INTO pokemen_inventory (user, staff, last_hunt) VALUES (?, ?, ?)", (username, '[]', 0))
+                conn_local.commit()
+            except sqlite3.IntegrityError:
+                pass  # already exists
+            inventory = cursor_local.execute("SELECT * FROM pokemen_inventory WHERE user=?", (username,)).fetchone()
+
+        last_hunt = inventory[2] if inventory and len(inventory) > 2 else 0
+        now = int(time.time())
+
+        if not is_auto and now - last_hunt < 90:
+            remaining = 90 - (now - last_hunt)
+            minutes = remaining // 60
+            seconds = remaining % 60
+            reply(f"You are too tired to hunt for a staff member. Please wait {minutes}m {seconds}s before trying again.")
+            return
+
+        # Select random pokestaff with weighted rarity (lower numbers = rarer)
+        weights = [r for _, r, _ in pokestaff]
+        staffmemberhuntedhopefullyorstandoorvirt, rarity, description = random.choices(pokestaff, weights=weights, k=1)[0]
+
+        # Load current staff inventory
+        try:
+            current_staff = json.loads(inventory[1]) if inventory and inventory[1] else []
+        except json.JSONDecodeError:
+            current_staff = []
+
+        # Add new caught pokemon to inventory
+        current_staff.append({
+            "name": staffmemberhuntedhopefullyorstandoorvirt,
+            "rarity": rarity,
+            "description": description,
+            "caught_at": now
+        })
+
+        # Update inventory with new pokemon and timestamp
+        try:
+            cursor_local.execute("UPDATE pokemen_inventory SET staff=?, last_hunt=? WHERE user=?", 
+                         (json.dumps(current_staff), now, username))
+            conn_local.commit()
+            if is_auto:
+                reply(f"Aurith went hunting and caught a {staffmemberhuntedhopefullyorstandoorvirt}! (Rarity: {rarity}) :3\n{description}")
+            else:
+                reply(f"You caught a {staffmemberhuntedhopefullyorstandoorvirt}! (Rarity: {rarity}) :3\n{description}")
+        except Exception as e:
+            if not is_auto:
+                reply(f"Error saving your catch: {e}")
+            print(f"Error updating pokemen inventory: {e}")
+    finally:
+        conn_local.close()
+
+
+def show_pokedex(pokestaff_name):
+    """Show one pokestaff entry from pokemen table."""
+    conn_local = sqlite3.connect('database.db')
+    cursor_local = conn_local.cursor()
+    try:
+        cursor_local.execute("SELECT staff, rarity, description FROM pokemen WHERE staff=?", (pokestaff_name,))
+        row = cursor_local.fetchone()
+        if not row:
+            reply(f"No pokedex entry found for '{pokestaff_name}'.")
+            return
+
+        staff, rarity, description = row
+        reply(f"Pokedex - {staff}: Rarity {rarity}. {description}")
+    except Exception as e:
+        reply(f"Error reading pokedex entry: {e}")
+        print(f"show_pokedex error: {e}")
+    finally:
+        conn_local.close()
+
+
+def show_pokebox(username):
+    """List caught pokestaff for user from pokemen_inventory."""
+    conn_local = sqlite3.connect('database.db')
+    cursor_local = conn_local.cursor()
+    try:
+        cursor_local.execute("SELECT staff, last_hunt FROM pokemen_inventory WHERE user=?", (username,))
+        row = cursor_local.fetchone()
+        if not row:
+            reply(f"{username} has no pokebox yet. Use /at pokehunt to catch one!")
+            return
+
+        staff_json, last_hunt = row
+        try:
+            staff_list = json.loads(staff_json or '[]')
+        except json.JSONDecodeError:
+            staff_list = []
+
+        if not staff_list:
+            reply(f"{username} has no pokestaff yet. Use /at pokehunt to catch one!")
+            return
+
+        lines = [f"Pokebox for {username} ({len(staff_list)} caught):"]
+        for entry in staff_list:
+            name = entry.get('name', '<unknown>')
+            rarity = entry.get('rarity', '?')
+            desc = entry.get('description', '')
+            lines.append(f"- {name} (Rarity {rarity}) {desc}")
+
+        # Keep one message only, but fallback if > 5 entries
+        if len(lines) > 15:
+            reply(f"{username} has {len(staff_list)} pokestaff. Use /at pokedex <name> for details.")
+        else:
+            reply("\n".join(lines))
+    except Exception as e:
+        reply(f"Error reading pokebox: {e}")
+        print(f"show_pokebox error: {e}")
+    finally:
+        conn_local.close()
+
+
+def list_pokestaff():
+    """List all pokestaff entries available."""
+    conn_local = sqlite3.connect('database.db')
+    cursor_local = conn_local.cursor()
+    try:
+        cursor_local.execute("SELECT staff, rarity FROM pokemen ORDER BY rarity ASC, staff ASC")
+        rows = cursor_local.fetchall()
+        if not rows:
+            reply("No pokestaff has been configured yet.")
+            return
+
+        lines = ["Available pokestaff:"]
+        for staff, rarity in rows:
+            lines.append(f"- {staff} (Rarity {rarity})")
+
+        if len(lines) > 25:
+            reply(f"There are {len(rows)} pokestaff entries. Use /at pokedex <name> for details.")
+        else:
+            reply("\n".join(lines))
+    except Exception as e:
+        reply(f"Error listing pokestaff: {e}")
+        print(f"list_pokestaff error: {e}")
+    finally:
+        conn_local.close()
+
+
+def auto_hunt_loop():
+    while run_event.is_set():
+        time.sleep(90)  # 90 seconds
+        do_pokehunt(CONFIG["username"], is_auto=True)
 def start_web():
     app = flask.Flask(__name__)
+
+    @app.route('/health')
+    def health():
+        return "OK", 200
+
+    @app.route('/api')
+    @app.route('/api/')
+    @app.route('/api/user')
+    @app.route('/api/user/')
+    @app.route('/api/pokestaff')
+    @app.route('/api/pokestaff/')
+    def theydida400():
+        return flask.jsonify({"error": "missing parameters"}), 400
 
     @app.route('/', methods=['GET', 'POST'])
     def index():
@@ -126,6 +316,7 @@ def start_web():
           <button type="submit">Save</button>
         </form>
         <p>Or view someone: <a href="/user/example">/user/example</a></p>
+        <p>View PokeStaff: <a href="/pokestaff">/pokestaff</a></p>
         </body></html>
         ''')
 
@@ -223,27 +414,192 @@ def start_web():
         </body></html>
         ''', p=d)
 
-    @app.route('/api/user/<string:username>')
+    @app.route('/pokestaff')
+    def pokestaff_index():
+        conn = sqlite3.connect('database.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT staff, rarity, description FROM pokemen ORDER BY rarity ASC, staff ASC')
+        rows = cursor.fetchall()
+        conn.close()
+
+        if not rows:
+            return flask.render_template_string('''
+            <html><body>
+            <h2>PokeStaff</h2>
+            <p>No pokestaff has been configured yet.</p>
+            <p><a href="/">Back</a></p>
+            </body></html>
+            ''')
+
+        return flask.render_template_string('''
+        <html><body>
+        <h2>PokeStaff</h2>
+        <p>List of current pokestaff creatures.</p>
+        <ul>
+        {% for staff, rarity, description in rows %}
+          <li><a href="/pokestaff/{{staff}}">{{staff}}</a> (rarity {{rarity}}) - {{description}}</li>
+        {% endfor %}
+        </ul>
+        <p><a href="/">Back</a></p>
+        </body></html>
+        ''', rows=rows)
+
+    @app.route('/pokestaff/<string:staff>')
+    def pokestaff_detail(staff):
+        conn = sqlite3.connect('database.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT staff, rarity, description FROM pokemen WHERE staff=?', (staff,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            return flask.render_template_string('<html><body><p>No pokestaff entry found for {{s}}</p><p><a href="/pokestaff">Back</a></p></body></html>', s=staff), 404
+
+        staff_name, rarity, description = row
+        return flask.render_template_string('''
+        <html><body>
+        <h2>PokeStaff: {{s}}</h2>
+        <p><b>Rarity:</b> {{r}}</p>
+        <p><b>Description:</b> {{d}}</p>
+        <p><a href="/pokestaff">Back to list</a></p>
+        </body></html>
+        ''', s=staff_name, r=rarity, d=description)
+
+    @app.route('/api/user/<string:username>', methods=['GET', 'POST'])
     def api_user(username):
-        # This will be implemented when I actually care to make it require a token, but for the open source users, just remove this and assign people a token if you want this to be closed
-        #token = flask.request.headers.get("Authorization")
-        #
-        #if not token:
-        #    return flask.jsonify({"error": "missing token"}), 401
-        #
-        #cursor.execute("SELECT TOKEN FROM tokens WHERE TOKEN=?", (token,))
-        #token_row = cursor.fetchone()
-        #
-        #if not token_row:
-        #    return flask.jsonify({"error": "invalid token"}), 403
+        conn = sqlite3.connect('database.db')
+        cursor = conn.cursor()
+
+        # FINALLY ADDED IT! Someone decided to scrape my bot's database apparently... so now we have an API with rate limits and token authentication to prevent abuse...
+        token = flask.request.args.get("token")
+        if not token:
+            token = flask.request.headers.get("Authorization")
+
+        if not token:
+            return flask.jsonify({"error": "missing token"}), 401
+
+        cursor.execute("SELECT * FROM tokens WHERE TOKEN=?", (token,))
+        token_row = cursor.fetchone()
+
+        if not token_row:
+            return flask.jsonify({"error": "invalid token"}), 403
+
+        # rate limit: max 1 request per minute unless bypass_rate_limit is enabled, may relax later but this is to prevent abuse from external developers... cant trust anyone >:(
+        now = time.time()
+        last_used = token_row[5] if len(token_row) > 5 and token_row[5] is not None else 0
+        bypass_rate_limit = bool(token_row[2])
+
+        if now - last_used < 60 and not bypass_rate_limit:
+            return flask.jsonify({"error": "rate limit exceeded"}), 429
+
+        cursor.execute("UPDATE tokens SET last_used=? WHERE TOKEN=?", (int(now), token))
+        conn.commit()
+
+        print(f"API request for user {username} with token {token_row[0]} (developer: {token_row[1]})") # This is temporary logging because external developers may abuse this
 
         row, _ = _get_user_row_by_name(username)
-        d = _profile_dict_from_row(row, False)
+        d = _profile_dict_from_row(row, bool(token_row[4]))
 
         if not d:
             return flask.jsonify({"error": "not found"}), 404
 
+        if flask.request.method == 'POST':
+            # require write access for updates
+            if not bool(token_row[3]):
+                return flask.jsonify({"error": "write permission required"}), 403
+
+            data = flask.request.get_json(silent=True)
+            if not isinstance(data, dict):
+                return flask.jsonify({"error": "invalid json payload"}), 400
+
+            allowed = {
+                'AUusername': 'AUusername',
+                'Discordusername': 'Discordusername',
+                'bio': 'bio',
+                'friend_code_3ds': 'friend_code_3ds',
+                'display': 'display',
+                'badges': 'badges',
+                'email': 'email'
+            }
+
+            update_fields = {}
+            for key, value in data.items():
+                if key not in allowed:
+                    continue
+                if key == 'friend_code_3ds' and value is not None:
+                    fc_digits = ''.join(ch for ch in str(value) if ch.isdigit())
+                    if len(fc_digits) != 12:
+                        return flask.jsonify({"error": "friend_code_3ds must contain exactly 12 digits"}), 400
+                    update_fields[allowed[key]] = fc_digits
+                elif key in ('can_assign_badges', 'owner') and value is not None:
+                    try:
+                        update_fields[allowed[key]] = 1 if int(value) else 0
+                    except Exception:
+                        return flask.jsonify({"error": f"{key} must be 0 or 1"}), 400
+                elif value is not None:
+                    update_fields[allowed[key]] = str(value)
+
+            if not update_fields:
+                return flask.jsonify({"error": "no updatable fields provided"}), 400
+
+            set_clause = ', '.join(f"{col}=?" for col in update_fields.keys())
+            values = list(update_fields.values())
+            cursor.execute(f"UPDATE users SET {set_clause} WHERE AUusername=? OR Discordusername=?", values + [username, username])
+            conn.commit()
+
+            row, _ = _get_user_row_by_name(username)
+            updated = _profile_dict_from_row(row, bool(token_row[4]))
+            print(f"Updated user {username} via API token {token_row[0]} (developer: {token_row[1]}), fields updated: {list(update_fields.keys())}") # Temporary logging for external developer updates
+            return flask.jsonify({"success": True, "user": updated})
+
         return flask.jsonify(d)
+
+    @app.route('/api/pokestaff/<string:staff>', methods=['GET'])
+    def api_pokestaff(staff=None):
+        conn = sqlite3.connect('database.db')
+        cursor = conn.cursor()
+
+        token = flask.request.args.get('token')
+        if not token:
+            token = flask.request.headers.get('Authorization')
+
+        if not token:
+            conn.close()
+            return flask.jsonify({'error': 'missing token'}), 401
+
+        cursor.execute('SELECT * FROM tokens WHERE TOKEN=?', (token,))
+        token_row = cursor.fetchone()
+
+        if not token_row:
+            conn.close()
+            return flask.jsonify({'error': 'invalid token'}), 403
+
+        now = time.time()
+        last_used = token_row[5] if len(token_row) > 5 and token_row[5] is not None else 0
+        bypass_rate_limit = bool(token_row[2])
+
+        if now - last_used < 60 and not bypass_rate_limit:
+            conn.close()
+            return flask.jsonify({'error': 'rate limit exceeded'}), 429
+
+        cursor.execute('UPDATE tokens SET last_used=? WHERE TOKEN=?', (int(now), token))
+        conn.commit()
+
+        if staff:
+            cursor.execute('SELECT staff, rarity, description FROM pokemen WHERE staff=?', (staff,))
+            row = cursor.fetchone()
+            conn.close()
+            if not row:
+                return flask.jsonify({'error': 'not found'}), 404
+            staff_name, rarity, description = row
+            return flask.jsonify({'staff': staff_name, 'rarity': rarity, 'description': description})
+
+        cursor.execute('SELECT staff, rarity, description FROM pokemen ORDER BY rarity ASC, staff ASC')
+        rows = cursor.fetchall()
+        conn.close()
+
+        results = [{'staff': r[0], 'rarity': r[1], 'description': r[2]} for r in rows]
+        return flask.jsonify({'pokestaff': results})
 
     # run in a thread so the main bot loop can continue
     def run_app():
@@ -262,6 +618,8 @@ def start_web():
 
 def console_input_loop(event: threading.Event):
     """Read lines from the console and send them to chat while `event` is set."""
+    conn = sqlite3.connect('database.db')
+    cursor = conn.cursor()
     while event.is_set():
         try:
             line = input()
@@ -285,8 +643,6 @@ def console_input_loop(event: threading.Event):
                 break
         elif line.lower().strip().startswith("/dbmod "):
             musername = content.strip()
-            conn = sqlite3.connect('database.db')
-            cursor = conn.cursor()
             exsists = cursor.execute("SELECT * FROM users WHERE AUusername=?", (musername,)).fetchone()
             if exsists:
                 superexists = 0
@@ -318,25 +674,65 @@ def console_input_loop(event: threading.Event):
                     print("it dont work, i'ma ignore you >:3")
             else:
                 print("User doesn't not exist dumbass")
+        elif line.lower().strip() == "/gtoken":
+            print("Generating token for external developer access...")
+            dev_name = input("Developer name: ").strip()
+            if not dev_name:
+                print("Developer name cannot be empty.")
+                return
+
+            # Check if developer exists in users table first
+            user_exists = cursor.execute("SELECT * FROM users WHERE AUusername=?", (dev_name,)).fetchone()
+            if not user_exists:
+                print(f"Error: User '{dev_name}' does not exist. They must register first!")
+                return
+
+            rng_value = secrets.token_hex(16)
+            token_value = hashlib.sha256(f"{dev_name}:{time.time()}".encode('utf-8')).hexdigest() + "." + rng_value
+            try:
+                cursor.execute("INSERT INTO tokens (TOKEN, developer) VALUES (?, ?)", (token_value, dev_name))
+                conn.commit()
+                print(f"Generated token for {dev_name}: {token_value}")
+                print("Please DM the token to the developer. Then delete it once saved.")
+            except Exception as e:
+                print(f"Error generating token: {e}")
+        elif line.lower().strip() == "/cpokestaff":
+            pokestaff = input("Enter the name of the staff member here ya idiot: ")
+            cursor.execute("SELECT * FROM pokemen WHERE staff=?", (pokestaff,))
+            exists = cursor.fetchone()
+            if exists:
+                updatevalue = input("Select a value to update: ")
+                if updatevalue.lower().strip() == "rarity":
+                    newrarity = input("Enter the new rarity (number only): ")
+                    try:
+                        rarity_int = int(newrarity)
+                        cursor.execute("UPDATE pokemen SET rarity=? WHERE staff=?", (rarity_int, pokestaff))
+                        conn.commit()
+                        print("Rarity updated successfully!")
+                    except ValueError:
+                        print("Invalid rarity value. Must be an integer.")
+                elif updatevalue.lower().strip() == "description":
+                    newdescription = input("Enter the new description: ")
+                    cursor.execute("UPDATE pokemen SET description=? WHERE staff=?", (newdescription, pokestaff))
+                    conn.commit()
+                    print("Description updated successfully!")
+            else:
+                rarity = input("Enter the rarity (number only) of this staff member's pokeman: ")
+                description = input("Enter a description for this staff member's pokeman: ")
+                iforgor = "dr strange"
+                try:
+                    cursor.execute("INSERT INTO pokemen (staff, rarity, description) VALUES (?, ?, ?)", (pokestaff, int(rarity), description))
+                    conn.commit()
+                    reply(f"A new pokestaff has appeared in the wild... it's {pokestaff}")
+                except Exception as e:
+                    print(f"Error adding pokestaff: {e}")
+
         else:
             reply(line)
 
 # (Duplicate console loop removed)
 
 def start_bot():
-    if CONFIG["webonly"]:
-        print("Starting web server only...")
-        start_web()
-        reply("Aurith is online in web-only mode!")
-        print("Web server is running. Press Ctrl+C to stop.")
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            print("\nShutting down web server...")
-            reply("Aurith is shutting down (web-only mode)")
-            print("Web server has shut down.")
-        return
     print("Iniciando bot...")
     send_request({"cmd": "CONNECT", "version": "1.0", "platform": "BOT"})
     send_request({"cmd": "LOGINACC", "username": CONFIG["username"], "password": CONFIG["password"]})
@@ -353,19 +749,31 @@ def start_bot():
                         badges TEXT DEFAULT '',
                         email TEXT,
                         can_assign_badges INTEGER DEFAULT 0,
-                        owner INTEGER DEFAULT 0
+                        owner INTEGER DEFAULT 0,
+                        pointless_hexadecimal TEXT UNIQUE
                     )''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS tokens (
                         TOKEN TEXT PRIMARY KEY UNIQUE,
                         developer TEXT UNIQUE,
                         bypass_rate_limit INTEGER DEFAULT 0,
                         write INTEGER DEFAULT 0,
-                        read_email INTEGER DEFAULT 0
+                        read_email INTEGER DEFAULT 0,
+                        last_used INTEGER DEFAULT 0
                     )''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS internalsettings (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         setting_name TEXT UNIQUE,
                         setting_value TEXT
+                    )''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS pokemen (
+                        staff TEXT UNIQUE,
+                        rarity integer,
+                        description TEXT
+                    )''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS pokemen_inventory (
+                        user TEXT UNIQUE,
+                        staff TEXT DEFAULT '{}',
+                        last_hunt INTEGER DEFAULT 0
                     )''')
     conn.commit()
     if CONFIG["webonly"]:
@@ -389,6 +797,9 @@ def start_bot():
     run_event.set()
     console_thread = threading.Thread(target=console_input_loop, args=(run_event,), daemon=True)
     console_thread.start()
+    # start auto hunt thread
+    auto_hunt_thread = threading.Thread(target=auto_hunt_loop, daemon=True)
+    auto_hunt_thread.start()
 
     try:
         # single attempt: connect once and read until disconnect or shutdown
@@ -465,9 +876,11 @@ def start_bot():
                                 platform_type = platform_match.group(1).strip()
                                 norm = re.sub(r'[^a-z0-9]', '', platform_type.lower())
                                 if norm == 'discord':
-                                    platform = None
+                                    platform = 'Discord'
                                 elif norm == 'wiiu' or platform_type == 'wii u':
                                     platform = 'Wii U'
+                                elif norm == 'fluxer':
+                                    platform = 'Fluxer'
                                 else:
                                     platform = platform_type.lower()
                         except Exception as e:
@@ -475,13 +888,21 @@ def start_bot():
                             platform = None
 
                 if username == CONFIG["username"]:
+                    if platform not in ('Discord', 'Fluxer'):
+                        try:
+                            exsists = cursor.execute("SELECT * FROM users WHERE AUusername=?", (username,)).fetchone()
+                            if exsists:
+                                cursor.execute("UPDATE users SET messages_sent = messages_sent + 1 WHERE AUusername=?", (username,))
+                                conn.commit()
+                        except Exception as e:
+                            print(f"yo bot dumb and cant update message count for itself")
+                            print(f"Error updating message count: {e}")
                     continue
 
                 # For DMs, only process if this bot is the receiver
                 if message_type == "DM" and receiver != CONFIG["username"]:
                     continue
 
-                # command handling (unchanged logic)
                 if content.lower().strip() == "/at hello":
                     reply("Hello, Im Dr. Sex")
                 elif content.lower().strip() == "/at info" or content.lower().strip() == "/at about":
@@ -491,7 +912,7 @@ def start_bot():
                         reply(f"Command viewing is currently web-only. Please visit https://aurith.aether-x.org/commands.")
                         continue
 
-                    reply("Available commands: DO THIS FIRST: /at register\n/at credits, /profile [username] (/at dash), /at info, /at source\nregistered users only: /at setbio [bio], /at setfc [friend code], /at setdisplayname [display name]\nuse /au help for the regular bot's commands")
+                    reply("Available commands: /at register\n/at credits, /profile [username] (/at dash), /at info, /at source, /at pokehunt\nregistered users only: /at setbio [bio], /at setfc [friend code], /at setdisplayname [display name], /at newhex\nuse /au help for the regular bot's commands")
                 elif content.lower().strip() == "/at credits":
                     reply("Made by: Lmutt090 (<https://lmutt090.me>) and ClaudiWolf (<https://www.claudiwolf2056.com/>)") # Please do not remove the credits from these people, atleast to the people who fork this...
                 elif content.lower().strip().startswith("/profile "):
@@ -558,9 +979,10 @@ def start_bot():
                 elif content.lower().strip() == "/at whoami":
                     reply(f"You are {username} on {platform if platform else 'A platform I cant detect... i\'m just gonna guess youse on discord'}")
                 elif content.lower().strip() == "/at register":
-                    if platform:
+                    if platform not in ('Discord', 'Fluxer'):
                         try:
-                            cursor.execute("INSERT INTO users (AUusername) VALUES (?)", (username,))
+                            pointless_hex = hashlib.sha256(f"{username}:{time.time()}".encode('utf-8')).hexdigest()
+                            cursor.execute("INSERT INTO users (AUusername, pointless_hexadecimal) VALUES (?, ?)", (username, pointless_hex))
                             conn.commit()
                             reply(f"Registered {username} to AU profiles!\nUse /at setbio and /at setfc to set up your profile!\nNote: If you want your discord account linked, DM Lmutt090 with your AU username...")
                         except sqlite3.IntegrityError:
@@ -765,8 +1187,48 @@ def start_bot():
                     reply("If you find a bug in Aurith, please report it to Lmutt090 on Discord. I don't have any money to give you for bug bounties though... But I will appreciate the help!")
                 elif content.lower().strip() == "/at source":
                     reply("Aurith is open source! You can find the code on GitHub: https://github.com/AetherX-Discord-Bot/Aurith")
+                elif content.lower().strip() == "/at newhex":
+                    if platform not in ('Discord', 'Fluxer'):
+                        cursor.execute("SELECT pointless_hexadecimal FROM users WHERE AUusername=?", (username,))
+                        exists = cursor.fetchone()
+                        if exists:
+                            pointless_hex = hashlib.sha256(f"{username}:{time.time()}".encode('utf-8')).hexdigest()
+                            try:
+                                cursor.execute("UPDATE users SET pointless_hexadecimal=? WHERE AUusername=?", (pointless_hex, username))
+                            except Exception as e:
+                                print(f"Error updating pointless hexadecimal: {e}")
+                    elif platform == 'Discord':
+                        cursor.execute("SELECT pointless_hexadecimal FROM users WHERE Discordusername=?", (username,))
+                        exists = cursor.fetchone()
+                        if exists:
+                            pointless_hex = hashlib.sha256(f"{username}:{time.time()}".encode('utf-8')).hexdigest()
+                            try:
+                                cursor.execute("UPDATE users SET pointless_hexadecimal=? WHERE Discordusername=?", (pointless_hex, username))
+                            except Exception as e:
+                                print(f"Error updating pointless hexadecimal: {e}")
+                    elif platform == 'Fluxer':
+                        cursor.execute("SELECT pointless_hexadecimal FROM users WHERE Fluxerusername=?", (username,))
+                        exists = cursor.fetchone()
+                        if exists:
+                            pointless_hex = hashlib.sha256(f"{username}:{time.time()}".encode('utf-8')).hexdigest()
+                            try:
+                                cursor.execute("UPDATE users SET pointless_hexadecimal=? WHERE Fluxerusername=?", (pointless_hex, username))
+                            except Exception as e:
+                                print(f"Error updating pointless hexadecimal: {e}")
+                    else:
+                        return
+                    reply("You got a new pointess hexadecimal... Why do you want this? lmfao")
+                elif content.lower().strip() == "/at pokehunt":
+                    do_pokehunt(username)
+                elif content.lower().strip().startswith("/at pokedex "):
+                    pokestaff_name = content[12:].strip()
+                    show_pokedex(pokestaff_name)
+                elif content.lower().strip() == "/at pokebox":
+                    show_pokebox(username)
+                elif content.lower().strip() == "/at pokestaff":
+                    list_pokestaff()
 
-                if platform:
+                if platform not in ('Discord', 'Fluxer'):
                     try:
                         exsists = cursor.execute("SELECT * FROM users WHERE AUusername=?", (username,)).fetchone()
                         if exsists:
@@ -774,11 +1236,19 @@ def start_bot():
                             conn.commit()
                     except Exception as e:
                         print(f"Error updating message count: {e}")
-                else:
+                elif platform == 'Discord':
                     try:
                         exsists = cursor.execute("SELECT * FROM users WHERE Discordusername=?", (username,)).fetchone()
                         if exsists:
                             cursor.execute("UPDATE users SET messages_sent = messages_sent + 1 WHERE Discordusername=?", (username,))
+                            conn.commit()
+                    except Exception as e:
+                        print(f"Error updating message count: {e}")
+                elif platform == 'Fluxer':
+                    try:
+                        exsists = cursor.execute("SELECT * FROM users WHERE Fluxerusername=?", (username,)).fetchone()
+                        if exsists:
+                            cursor.execute("UPDATE users SET messages_sent = messages_sent + 1 WHERE Fluxerusername=?", (username,))
                             conn.commit()
                     except Exception as e:
                         print(f"Error updating message count: {e}")
