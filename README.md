@@ -3,7 +3,7 @@
 Aurith is a Python-based chat bot designed for AuroraChat servers.  
 It connects to the AuroraChat server, listens for messages, and responds to commands while maintaining user profiles stored in a local SQLite database.
 
-[![Services Health](https://Aurith.montastic.io/badge)](https://Aurith.montastic.io)
+[![Services Health](https://aurith.montastic.io/badge)](https://aurith.montastic.io)
 
 ## Features
 
